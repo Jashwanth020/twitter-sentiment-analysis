@@ -1,0 +1,1166 @@
+TWITTER SENTIMENT ANALYSIS
+===========================
+
+Project Type:
+End-to-End Classical NLP + Machine Learning + Streamlit Deployment
+
+Objective:
+Build an end-to-end Twitter/X sentiment analysis system using the Twitter US Airline Sentiment dataset. The project will cover data acquisition, exploratory data analysis, text preprocessing, feature engineering, classical machine learning model development, evaluation, error analysis, model serialization, and Streamlit deployment.
+
+IMPORTANT SCOPE DECISION
+------------------------
+This project will NOT use Transformer NLP, RoBERTa, PyTorch, or TensorFlow.
+
+Models:
+1. VADER
+2. Naive Bayes
+3. Logistic Regression
+4. Linear SVM
+
+Primary ML pipeline:
+Raw Tweet
+    |
+    v
+Text Cleaning
+    |
+    v
+Tokenization
+    |
+    v
+Lemmatization
+    |
+    v
+TF-IDF
+    |
+    v
+Classifier
+    |
+    v
+Sentiment Prediction
+
+
+============================================================
+1. DATASET
+============================================================
+
+Dataset:
+Twitter US Airline Sentiment
+
+Source:
+Kaggle - Twitter US Airline Sentiment
+
+Expected dataset:
+Tweets.csv
+
+Approximate size:
+14,640 tweets
+
+Target column:
+airline_sentiment
+
+Target classes:
+- negative
+- neutral
+- positive
+
+Important columns:
+- text
+- airline_sentiment
+- airline
+- airline_sentiment_confidence
+- negativereason
+- negativereason_confidence
+- retweet_count
+- tweet_created
+- tweet_location
+- user_timezone
+
+Primary modeling columns:
+- text
+- airline_sentiment
+
+Raw data must remain unchanged.
+
+Recommended structure:
+
+twitter-sentiment-analysis/
+|
+├── data/
+│   ├── raw/
+│   │   └── Tweets.csv
+│   │
+│   └── processed/
+│       └── sentiment_dataset.csv
+|
+├── notebooks/
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_text_preprocessing.ipynb
+│   ├── 03_vader_baseline.ipynb
+│   ├── 04_classical_models.ipynb
+│   └── 05_model_evaluation.ipynb
+|
+├── src/
+│   ├── __init__.py
+│   ├── data_loader.py
+│   ├── preprocessing.py
+│   ├── features.py
+│   ├── train.py
+│   ├── evaluate.py
+│   └── inference.py
+|
+├── models/
+│   ├── tfidf_logistic_regression.joblib
+│   ├── tfidf_linear_svm.joblib
+│   └── tfidf_naive_bayes.joblib
+|
+├── tests/
+│   ├── test_preprocessing.py
+│   └── test_inference.py
+|
+├── app.py
+├── requirements.txt
+├── README.md
+└── .gitignore
+
+
+============================================================
+2. ENVIRONMENT SETUP
+============================================================
+
+Create a virtual environment:
+
+python -m venv .venv
+
+Windows activation:
+
+.venv\Scripts\activate
+
+Install initial dependencies:
+
+pip install pandas numpy matplotlib seaborn scikit-learn nltk spacy streamlit joblib pytest
+
+Optional:
+
+pip install wordcloud emoji
+
+Download NLTK resources in Python:
+
+import nltk
+
+nltk.download("punkt")
+nltk.download("stopwords")
+nltk.download("wordnet")
+nltk.download("vader_lexicon")
+
+
+============================================================
+3. PHASE 1 - DATA ACQUISITION
+============================================================
+
+Step 1:
+Download Tweets.csv from the Twitter US Airline Sentiment dataset.
+
+Step 2:
+Place the file at:
+
+data/raw/Tweets.csv
+
+Step 3:
+Do not manually modify the raw dataset.
+
+Step 4:
+Load the dataset:
+
+import pandas as pd
+
+df = pd.read_csv("../data/raw/Tweets.csv")
+
+Step 5:
+Inspect:
+
+df.shape
+df.head()
+df.info()
+df.columns.tolist()
+
+Step 6:
+Check missing values:
+
+df.isnull().sum()
+
+Step 7:
+Check duplicates:
+
+df.duplicated().sum()
+df["text"].duplicated().sum()
+
+Step 8:
+Check target distribution:
+
+df["airline_sentiment"].value_counts()
+
+df["airline_sentiment"].value_counts(normalize=True) * 100
+
+
+============================================================
+4. PHASE 1 - EXPLORATORY DATA ANALYSIS
+============================================================
+
+Required EDA:
+
+1. Overall sentiment distribution
+2. Sentiment distribution by airline
+3. Negative reasons
+4. Tweet length distribution
+5. Word frequency
+6. Most common terms by sentiment
+7. Missing values
+8. Duplicate records
+
+Sentiment plot:
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8, 5))
+
+sns.countplot(
+    data=df,
+    x="airline_sentiment"
+)
+
+plt.title("Sentiment Distribution")
+plt.xlabel("Sentiment")
+plt.ylabel("Number of Tweets")
+
+plt.show()
+
+Airline sentiment:
+
+pd.crosstab(
+    df["airline"],
+    df["airline_sentiment"]
+)
+
+Normalized:
+
+pd.crosstab(
+    df["airline"],
+    df["airline_sentiment"],
+    normalize="index"
+) * 100
+
+Negative reasons:
+
+df["negativereason"].value_counts()
+
+Example visualization:
+
+plt.figure(figsize=(10, 6))
+
+df["negativereason"].value_counts().plot(
+    kind="barh"
+)
+
+plt.title("Reasons for Negative Sentiment")
+plt.xlabel("Number of Tweets")
+
+plt.tight_layout()
+plt.show()
+
+
+============================================================
+5. PHASE 1 - CREATE MODELING DATASET
+============================================================
+
+Keep only:
+
+model_df = df[
+    ["text", "airline_sentiment"]
+].copy()
+
+Rename:
+
+model_df = model_df.rename(
+    columns={
+        "airline_sentiment": "sentiment"
+    }
+)
+
+Remove missing values:
+
+model_df = model_df.dropna(
+    subset=["text", "sentiment"]
+)
+
+Remove duplicate tweets:
+
+model_df = model_df.drop_duplicates(
+    subset=["text"]
+)
+
+Check:
+
+model_df.shape
+model_df["sentiment"].value_counts()
+
+Save:
+
+model_df.to_csv(
+    "../data/processed/sentiment_dataset.csv",
+    index=False
+)
+
+
+============================================================
+6. PHASE 2 - NLP PREPROCESSING
+============================================================
+
+Important:
+Use separate preprocessing strategies for VADER and TF-IDF models.
+
+VADER:
+Minimal cleaning should be used because punctuation, capitalization, emojis, and other sentiment signals can be useful.
+
+Classical ML:
+Use cleaning, tokenization, stopword handling, and lemmatization before TF-IDF.
+
+Text cleaning requirements:
+
+- Convert text to lowercase
+- Remove URLs
+- Handle @mentions
+- Handle RT
+- Preserve useful hashtags
+- Decide how emojis are handled
+- Remove unnecessary whitespace
+- Avoid destroying sentiment-bearing words
+- Avoid excessive normalization
+
+Example:
+
+import re
+
+def clean_text(text):
+
+    text = text.lower()
+
+    text = re.sub(
+        r"http\S+|www\S+",
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"@\w+",
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"\brt\b",
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    return text.strip()
+
+
+============================================================
+7. TOKENIZATION
+============================================================
+
+For classical NLP:
+
+from nltk.tokenize import word_tokenize
+
+tokens = word_tokenize(text)
+
+Example:
+
+"I love this airline"
+
+becomes:
+
+["I", "love", "this", "airline"]
+
+
+============================================================
+8. STOPWORD HANDLING
+============================================================
+
+Stopwords can be removed for classical models, but test both approaches.
+
+Important:
+Words involved in negation can be important for sentiment.
+
+Examples:
+- not
+- never
+- no
+
+Do not blindly remove all stopwords without evaluating the impact.
+
+
+============================================================
+9. LEMMATIZATION
+============================================================
+
+Use WordNet lemmatization or spaCy.
+
+NLTK example:
+
+from nltk.stem import WordNetLemmatizer
+
+lemmatizer = WordNetLemmatizer()
+
+def lemmatize_tokens(tokens):
+
+    return [
+        lemmatizer.lemmatize(token)
+        for token in tokens
+    ]
+
+Recommended final preprocessing function:
+
+Raw text
+    |
+    v
+Clean
+    |
+    v
+Tokenize
+    |
+    v
+Stopword handling
+    |
+    v
+Lemmatize
+    |
+    v
+Join tokens
+    |
+    v
+TF-IDF
+
+
+============================================================
+10. PHASE 3 - TRAIN/TEST SPLIT
+============================================================
+
+Use a stratified split.
+
+Example:
+
+from sklearn.model_selection import train_test_split
+
+X = model_df["text"]
+y = model_df["sentiment"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+Recommended:
+80% training
+20% testing
+
+Do not fit TF-IDF on the test set.
+
+
+============================================================
+11. PHASE 3 - VADER BASELINE
+============================================================
+
+Purpose:
+Create a rule-based baseline before supervised machine learning.
+
+Example:
+
+from nltk.sentiment import SentimentIntensityAnalyzer
+
+sia = SentimentIntensityAnalyzer()
+
+def vader_sentiment(text):
+
+    score = sia.polarity_scores(text)["compound"]
+
+    if score >= 0.05:
+        return "positive"
+
+    elif score <= -0.05:
+        return "negative"
+
+    return "neutral"
+
+Apply:
+
+vader_predictions = X_test.apply(
+    vader_sentiment
+)
+
+Evaluate VADER using the same test set.
+
+
+============================================================
+12. PHASE 3 - TF-IDF
+============================================================
+
+Use TF-IDF for the classical ML models.
+
+Recommended starting configuration:
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+tfidf = TfidfVectorizer(
+    max_features=50000,
+    ngram_range=(1, 2),
+    min_df=2,
+    max_df=0.95,
+    sublinear_tf=True
+)
+
+Important:
+TF-IDF must be fitted only on training data.
+
+Use a Scikit-Learn Pipeline to reduce leakage risk.
+
+
+============================================================
+13. LOGISTIC REGRESSION
+============================================================
+
+Pipeline:
+
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
+
+logistic_model = Pipeline([
+    (
+        "tfidf",
+        TfidfVectorizer(
+            max_features=50000,
+            ngram_range=(1, 2),
+            min_df=2,
+            max_df=0.95,
+            sublinear_tf=True
+        )
+    ),
+    (
+        "classifier",
+        LogisticRegression(
+            max_iter=1000,
+            class_weight="balanced"
+        )
+    )
+])
+
+Train:
+
+logistic_model.fit(
+    X_train,
+    y_train
+)
+
+Predict:
+
+logistic_predictions = logistic_model.predict(
+    X_test
+)
+
+Probabilities:
+
+logistic_probabilities = logistic_model.predict_proba(
+    X_test
+)
+
+
+============================================================
+14. NAIVE BAYES
+============================================================
+
+Use Multinomial Naive Bayes.
+
+Example:
+
+from sklearn.naive_bayes import MultinomialNB
+
+nb_model = Pipeline([
+    (
+        "tfidf",
+        TfidfVectorizer(
+            max_features=50000,
+            ngram_range=(1, 2)
+        )
+    ),
+    (
+        "classifier",
+        MultinomialNB()
+    )
+])
+
+Train:
+
+nb_model.fit(
+    X_train,
+    y_train
+)
+
+Predict:
+
+nb_predictions = nb_model.predict(
+    X_test
+)
+
+
+============================================================
+15. LINEAR SVM
+============================================================
+
+Use LinearSVC.
+
+Example:
+
+from sklearn.svm import LinearSVC
+
+svm_model = Pipeline([
+    (
+        "tfidf",
+        TfidfVectorizer(
+            max_features=50000,
+            ngram_range=(1, 2)
+        )
+    ),
+    (
+        "classifier",
+        LinearSVC(
+            class_weight="balanced"
+        )
+    )
+])
+
+Train:
+
+svm_model.fit(
+    X_train,
+    y_train
+)
+
+Predict:
+
+svm_predictions = svm_model.predict(
+    X_test
+)
+
+Note:
+LinearSVC does not provide predict_proba by default. Use decision_function if confidence-like scores are needed, or consider CalibratedClassifierCV.
+
+
+============================================================
+16. PHASE 4 - MODEL EVALUATION
+============================================================
+
+Evaluate all models using:
+
+- Accuracy
+- Precision
+- Recall
+- Macro F1
+- Weighted F1
+- Confusion matrix
+- Per-class performance
+
+Example:
+
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    classification_report
+)
+
+accuracy = accuracy_score(
+    y_test,
+    predictions
+)
+
+precision = precision_score(
+    y_test,
+    predictions,
+    average="macro"
+)
+
+recall = recall_score(
+    y_test,
+    predictions,
+    average="macro"
+)
+
+macro_f1 = f1_score(
+    y_test,
+    predictions,
+    average="macro"
+)
+
+weighted_f1 = f1_score(
+    y_test,
+    predictions,
+    average="weighted"
+)
+
+print(
+    classification_report(
+        y_test,
+        predictions
+    )
+)
+
+Primary metric:
+Macro F1
+
+Reason:
+The dataset is imbalanced, so macro F1 gives equal importance to each sentiment class.
+
+
+============================================================
+17. CONFUSION MATRIX
+============================================================
+
+Example:
+
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+cm = confusion_matrix(
+    y_test,
+    predictions
+)
+
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt="d"
+)
+
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.title("Sentiment Confusion Matrix")
+
+plt.show()
+
+Generate one confusion matrix for each major model.
+
+
+============================================================
+18. MODEL COMPARISON
+============================================================
+
+Create a final comparison table:
+
+Model                  Accuracy    Macro F1    Weighted F1
+------------------------------------------------------------
+VADER                  [RESULT]    [RESULT]    [RESULT]
+Naive Bayes            [RESULT]    [RESULT]    [RESULT]
+Logistic Regression    [RESULT]    [RESULT]    [RESULT]
+Linear SVM             [RESULT]    [RESULT]    [RESULT]
+
+Use actual experimental values.
+
+Do not invent performance numbers.
+
+
+============================================================
+19. ERROR ANALYSIS
+============================================================
+
+For the best model:
+
+1. Identify incorrectly classified tweets.
+2. Examine negative/neutral confusion.
+3. Examine positive/neutral confusion.
+4. Look for sarcasm.
+5. Look for negation.
+6. Examine slang.
+7. Examine spelling errors.
+8. Examine emoji usage.
+9. Examine very short tweets.
+10. Examine airline-specific terminology.
+
+Example:
+
+errors = model_df.loc[
+    X_test.index
+].copy()
+
+errors["prediction"] = predictions
+
+errors["correct"] = (
+    errors["sentiment"] ==
+    errors["prediction"]
+)
+
+misclassified = errors[
+    ~errors["correct"]
+]
+
+Inspect:
+
+misclassified[
+    ["text", "sentiment", "prediction"]
+].head(30)
+
+
+============================================================
+20. MODEL SERIALIZATION
+============================================================
+
+Save the best model:
+
+import joblib
+
+joblib.dump(
+    best_model,
+    "models/sentiment_model.joblib"
+)
+
+The saved pipeline should contain:
+- preprocessing/TF-IDF
+- classifier
+
+This allows Streamlit to use the same transformation pipeline used during training.
+
+
+============================================================
+21. PHASE 5 - STREAMLIT APPLICATION
+============================================================
+
+Application architecture:
+
+User Tweet
+    |
+    v
+Streamlit UI
+    |
+    v
+Saved ML Pipeline
+    |
+    v
+Sentiment Prediction
+    |
+    v
+Result + Confidence
+
+
+Recommended features:
+
+1. Single tweet prediction
+2. Sentiment label
+3. Confidence/probability where supported
+4. Batch CSV prediction
+5. Download results
+6. Model comparison page
+7. Basic sentiment analytics
+
+
+============================================================
+22. STREAMLIT BASIC APPLICATION
+============================================================
+
+Example app.py:
+
+import streamlit as st
+import joblib
+
+st.set_page_config(
+    page_title="Twitter Sentiment Analyzer",
+    page_icon="🐦"
+)
+
+st.title("Twitter Sentiment Analyzer")
+
+model = joblib.load(
+    "models/sentiment_model.joblib"
+)
+
+text = st.text_area(
+    "Enter a tweet:"
+)
+
+if st.button("Analyze Sentiment"):
+
+    if not text.strip():
+
+        st.warning(
+            "Please enter a tweet."
+        )
+
+    else:
+
+        prediction = model.predict(
+            [text]
+        )[0]
+
+        st.success(
+            f"Predicted Sentiment: {prediction}"
+        )
+
+
+============================================================
+23. BATCH CSV PREDICTION
+============================================================
+
+Use:
+
+uploaded_file = st.file_uploader(
+    "Upload CSV",
+    type=["csv"]
+)
+
+Then:
+
+import pandas as pd
+
+if uploaded_file:
+
+    batch_df = pd.read_csv(
+        uploaded_file
+    )
+
+    batch_df["sentiment"] = model.predict(
+        batch_df["text"]
+    )
+
+    st.dataframe(
+        batch_df
+    )
+
+Allow the user to download predictions.
+
+
+============================================================
+24. TESTING
+============================================================
+
+Create:
+
+tests/
+├── test_preprocessing.py
+└── test_inference.py
+
+Test:
+- Empty input
+- URLs
+- mentions
+- hashtags
+- punctuation
+- normal tweets
+- model prediction
+- invalid input
+- batch CSV format
+
+Example:
+
+def test_clean_text():
+
+    text = "Hello!!! https://example.com"
+
+    result = clean_text(text)
+
+    assert "https" not in result
+
+
+============================================================
+25. DEPLOYMENT
+============================================================
+
+Required files:
+
+app.py
+requirements.txt
+README.md
+models/
+src/
+
+requirements.txt should include only required packages.
+
+Example:
+
+streamlit
+pandas
+numpy
+scikit-learn
+nltk
+joblib
+matplotlib
+seaborn
+
+
+Deployment flow:
+
+Local Development
+      |
+      v
+Git
+      |
+      v
+GitHub
+      |
+      v
+Streamlit Deployment
+      |
+      v
+Production App
+
+
+Do not commit:
+- API keys
+- passwords
+- private credentials
+- large raw datasets when unnecessary
+- local environment files
+- .venv
+
+
+============================================================
+26. MLOPS EXTENSIONS
+============================================================
+
+Optional additions:
+
+- MLflow
+- DVC
+- GitHub Actions
+- Docker
+- Automated testing
+- Model versioning
+- Data versioning
+- Experiment tracking
+
+These should be added after the core project works.
+
+
+============================================================
+27. FINAL PROJECT ARCHITECTURE
+============================================================
+
+                    Twitter Dataset
+                          |
+                          v
+                  Data Engineering
+                          |
+                          v
+                         EDA
+                          |
+                          v
+                  Text Preprocessing
+                          |
+                          v
+                       TF-IDF
+                          |
+          +---------------+---------------+
+          |               |               |
+          v               v               v
+     Naive Bayes   Logistic Regression  Linear SVM
+          |               |               |
+          +---------------+---------------+
+                          |
+                          v
+                   Model Evaluation
+                          |
+                          v
+                    Error Analysis
+                          |
+                          v
+                  Best Model Selection
+                          |
+                          v
+                   Model Serialization
+                          |
+                          v
+                     Streamlit
+                          |
+                          v
+                      Deployment
+
+
+============================================================
+28. PORTFOLIO DELIVERABLES
+============================================================
+
+Final repository should contain:
+
+1. Clean GitHub repository
+2. Raw dataset reference
+3. EDA notebook
+4. Preprocessing module
+5. VADER baseline
+6. Naive Bayes model
+7. Logistic Regression model
+8. Linear SVM model
+9. Model comparison
+10. Confusion matrices
+11. Error analysis
+12. Serialized best model
+13. Streamlit application
+14. Unit tests
+15. README
+16. requirements.txt
+17. Deployment instructions
+
+
+============================================================
+29. RESUME PROJECT DESCRIPTION
+============================================================
+
+Suggested resume entry:
+
+End-to-End Twitter Sentiment Analysis | Python, NLP, Scikit-Learn, Streamlit
+
+Built an end-to-end Twitter sentiment classification pipeline using the Twitter US Airline Sentiment dataset, covering data validation, exploratory analysis, NLP preprocessing, TF-IDF feature engineering, and benchmarking of VADER, Naive Bayes, Logistic Regression, and Linear SVM models. Evaluated models using accuracy, precision, recall, macro-F1, weighted-F1, confusion matrices, and error analysis, then serialized the best-performing pipeline and deployed an interactive Streamlit application for real-time and batch sentiment prediction.
+
+
+============================================================
+30. IMPLEMENTATION ORDER
+============================================================
+
+Follow this order exactly:
+
+STEP 1  - Download Tweets.csv
+STEP 2  - Create project structure
+STEP 3  - Create Python environment
+STEP 4  - Load and inspect data
+STEP 5  - Perform EDA
+STEP 6  - Clean and validate dataset
+STEP 7  - Save processed dataset
+STEP 8  - Create train/test split
+STEP 9  - Build text preprocessing
+STEP 10 - Implement VADER baseline
+STEP 11 - Implement TF-IDF + Naive Bayes
+STEP 12 - Implement TF-IDF + Logistic Regression
+STEP 13 - Implement TF-IDF + Linear SVM
+STEP 14 - Evaluate all models
+STEP 15 - Compare models
+STEP 16 - Perform error analysis
+STEP 17 - Select best model
+STEP 18 - Serialize model
+STEP 19 - Build Streamlit application
+STEP 20 - Add batch prediction
+STEP 21 - Add tests
+STEP 22 - Create requirements.txt
+STEP 23 - Push to GitHub
+STEP 24 - Deploy to Streamlit
+STEP 25 - Document project in README
+
+END OF IMPLEMENTATION PLAN
