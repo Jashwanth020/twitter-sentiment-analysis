@@ -6,7 +6,6 @@ End-to-End Twitter Sentiment Classification pipeline using classical NLP, machin
 
 This project builds a sentiment analysis system on the Twitter US Airline Sentiment dataset. It implements data cleaning, exploratory data analysis (EDA), and compares several classical modeling approaches:
 
-- **VADER** (Rule-based Baseline)
 - **Naive Bayes** with TF-IDF
 - **Logistic Regression** with TF-IDF
 - **Linear SVM** with TF-IDF
